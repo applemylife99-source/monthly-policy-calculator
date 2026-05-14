@@ -86,7 +86,7 @@ const FUND_LABELS = {
 };
 
 const SCENARIO_PROFILES = {
-  flat: { annualDrift: 0.035, annualVol: 0.08, label: "平穩" },
+  flat: { annualDrift: 0, annualVol: 0.07, label: "平穩", meanReversion: 0.35, rangeBand: 0.12 },
   up20: { annualDrift: 0.052, annualVol: 0.18, label: "偏牛" },
   down20: { annualDrift: 0.018, annualVol: 0.2, label: "偏熊" },
   normal: { annualDrift: 0.04, annualVol: 0.28, label: "劇烈" },
@@ -215,6 +215,23 @@ function scenarioNavPoint(baseNav, month, scenario, seed) {
   const profile = SCENARIO_PROFILES[scenario] || SCENARIO_PROFILES.flat;
   const monthlyDrift = profile.annualDrift / 12;
   const monthlyVol = profile.annualVol / Math.sqrt(12);
+
+  if (profile.meanReversion) {
+    let level = 1;
+    let previousLevel = 1;
+    let change = 0;
+    const lowerBand = 1 - profile.rangeBand;
+    const upperBand = 1 + profile.rangeBand;
+    for (let i = 1; i <= month; i += 1) {
+      previousLevel = level;
+      const shock = monthlyVol * seededNormal(seed + i);
+      const pullBack = (1 - level) * profile.meanReversion;
+      level = Math.min(upperBand, Math.max(lowerBand, level + pullBack + shock));
+      change = level / previousLevel - 1;
+    }
+    return { nav: baseNav * level, change };
+  }
+
   let factor = 1;
   let change = 0;
   for (let i = 1; i <= month; i += 1) {
