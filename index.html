@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>月配息保單計算機</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Investment-linked policy planner</p>
+        <h1>月配息保單計算機</h1>
+      </div>
+      <button id="refreshData" class="icon-button" type="button" aria-label="更新市場資料">↻</button>
+    </header>
+
+    <main>
+      <section class="panel input-panel" aria-label="輸入條件">
+        <label>
+          商品平台
+          <select id="product"></select>
+        </label>
+
+        <label id="singleFundField" class="is-hidden">
+          單一標的
+          <select id="singleFund">
+            <option value="cash">聯博-美國成長基金AP</option>
+            <option value="stock">貝萊德世界科技A10</option>
+          </select>
+        </label>
+
+        <label id="dualCashFundField" class="is-hidden">
+          配現金標的
+          <select id="dualCashFund">
+            <option value="cash">聯博-美國成長基金AP</option>
+            <option value="stock">貝萊德世界科技A10</option>
+          </select>
+        </label>
+
+        <label id="dualStockFundField" class="is-hidden">
+          配股數標的
+          <select id="dualStockFund">
+            <option value="stock">貝萊德世界科技A10</option>
+            <option value="cash">聯博-美國成長基金AP</option>
+          </select>
+        </label>
+
+        <div class="two-cols">
+          <label>
+            年齡
+            <input id="age" type="number" inputmode="numeric" min="0" max="90" value="45" />
+          </label>
+          <label>
+            性別
+            <select id="gender">
+              <option value="male">男</option>
+              <option value="female">女</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          投入資金（新台幣）
+          <input id="capital" type="number" inputmode="decimal" min="0" step="10000" value="3000000" />
+        </label>
+
+        <label>
+          配現金年化配息率（%）
+          <input id="targetYield" type="number" inputmode="decimal" min="0" max="20" step="0.1" value="6" />
+        </label>
+
+        <details class="market-editor">
+          <summary>市場資料與手動修正</summary>
+          <div class="market-grid">
+            <label>
+              美元匯率
+              <input id="fx" type="number" step="0.001" />
+            </label>
+            <label>
+              聯博淨值
+              <input id="cashNav" type="number" step="0.0001" />
+            </label>
+            <label>
+              聯博每單位配息
+              <input id="cashDiv" type="number" step="0.0001" />
+            </label>
+            <label>
+              貝萊德淨值
+              <input id="stockNav" type="number" step="0.0001" />
+            </label>
+            <label>
+              貝萊德每單位配息
+              <input id="stockDiv" type="number" step="0.0001" />
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section class="market-snapshot" aria-label="最新市場資料">
+        <article>
+          <span>美元匯率</span>
+          <strong id="fxSnapshot">-</strong>
+        </article>
+        <article>
+          <span>聯博淨值</span>
+          <strong id="cashNavSnapshot">-</strong>
+        </article>
+        <article>
+          <span>聯博配息</span>
+          <strong id="cashDivSnapshot">-</strong>
+        </article>
+        <article>
+          <span>貝萊德淨值</span>
+          <strong id="stockNavSnapshot">-</strong>
+        </article>
+        <article>
+          <span>貝萊德配息</span>
+          <strong id="stockDivSnapshot">-</strong>
+        </article>
+      </section>
+
+      <section class="feature-strip" id="featureStrip"></section>
+
+      <section class="summary-grid" aria-label="計算摘要">
+        <article>
+          <span>首月預估領現</span>
+          <strong id="monthlyCash">-</strong>
+        </article>
+        <article>
+          <span>壽險金額</span>
+          <strong id="deathBenefit">-</strong>
+        </article>
+        <article>
+          <span>配現／領現比例</span>
+          <strong id="cashRatio">-</strong>
+        </article>
+        <article>
+          <span>首月費用金額</span>
+          <strong id="firstFeeUnits">-</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>情境結果</h2>
+          <p id="dataStatus">正在更新資料</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="情境切換">
+          <button class="tab is-active" type="button" data-scenario="flat">預測常態波動平穩</button>
+          <button class="tab" type="button" data-scenario="up20">預測常態波動偏牛</button>
+          <button class="tab" type="button" data-scenario="down20">預測常態波動偏熊</button>
+          <button class="tab" type="button" data-scenario="normal">預測常態波動劇烈</button>
+        </div>
+        <p id="scenarioHint" class="scenario-hint">平穩情境：年化波動率8.0%，每次點選會重新抽樣。</p>
+
+        <div class="value-chart-card" aria-label="保單價值走勢">
+          <div class="value-chart-head">
+            <div>
+              <h3>保單價值走勢</h3>
+              <p id="valueChartCaption">持有期間保單價值變化</p>
+            </div>
+            <strong id="valueChartEnd">-</strong>
+          </div>
+          <svg id="valueChart" viewBox="0 0 320 150" role="img" aria-label="保單價值走勢圖"></svg>
+          <div id="valueChartStats" class="value-chart-stats"></div>
+          <div id="valueChartMilestones" class="value-chart-milestones"></div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>期間</th>
+                <th>配現金</th>
+                <th>累積領現</th>
+                <th>保單價值</th>
+                <th>淨值波動</th>
+                <th>淨標的單位新增</th>
+                <th>保本率</th>
+              </tr>
+            </thead>
+            <tbody id="resultRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
