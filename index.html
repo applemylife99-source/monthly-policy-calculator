@@ -16,6 +16,12 @@
     </header>
 
     <main>
+      <nav class="app-switch" aria-label="計算機切換">
+        <button class="app-switch-button is-active" type="button" data-view="policyApp">月配息保單</button>
+        <button class="app-switch-button" type="button" data-view="loanApp">貸款套利</button>
+      </nav>
+
+      <div id="policyApp" class="app-view is-active">
       <section class="panel input-panel" aria-label="輸入條件">
         <label>
           商品平台
@@ -184,6 +190,147 @@
           </table>
         </div>
       </section>
+      </div>
+
+      <div id="loanApp" class="app-view">
+      <section class="panel loan-panel" id="loanArbitrage">
+        <div class="section-title">
+          <h2>貸款套利計算機</h2>
+          <p>以月配息保單年配現率 8% 為預設，估算每月實際支出與第 48 期後解約償還貸款的套現空間。</p>
+        </div>
+
+        <div class="loan-layout">
+          <article class="loan-block">
+            <div class="loan-block-head">
+              <span>情境 1</span>
+              <h3>房貸增貸 + 理財型房貸投入保單</h3>
+            </div>
+            <div class="loan-input-grid">
+              <label>
+                一般購屋房貸金額
+                <input id="s1MortgageAmount" type="number" inputmode="decimal" min="0" step="10000" value="8000000" />
+              </label>
+              <label>
+                一般房貸年利率（%）
+                <input id="s1MortgageRate" type="number" inputmode="decimal" min="0" step="0.01" value="2.2" />
+              </label>
+              <label>
+                一般房貸年期
+                <input id="s1MortgageYears" type="number" inputmode="numeric" min="1" step="1" value="30" />
+              </label>
+              <label>
+                理財型房貸動撥金額
+                <input id="s1FlexAmount" type="number" inputmode="decimal" min="0" step="10000" value="3000000" />
+              </label>
+              <label>
+                理財型房貸年利率（%）
+                <input id="s1FlexRate" type="number" inputmode="decimal" min="0" step="0.01" value="3.0" />
+              </label>
+              <label>
+                保單年配現率（%）
+                <input id="s1PolicyYield" type="number" inputmode="decimal" min="0" step="0.1" value="8" />
+              </label>
+            </div>
+            <div class="loan-summary-grid">
+              <article>
+                <span>一般房貸月付</span>
+                <strong id="s1MortgagePayment">-</strong>
+              </article>
+              <article>
+                <span>理財型房貸月息</span>
+                <strong id="s1FlexInterest">-</strong>
+              </article>
+              <article>
+                <span>保單月配現</span>
+                <strong id="s1PolicyCash">-</strong>
+              </article>
+              <article class="highlight">
+                <span>每月實際需支出</span>
+                <strong id="s1NetOutflow">-</strong>
+              </article>
+            </div>
+          </article>
+
+          <article class="loan-block">
+            <div class="loan-block-head">
+              <span>情境 2</span>
+              <h3>信用貸款／房屋貸款投入保單</h3>
+            </div>
+            <div class="loan-input-grid">
+              <label>
+                貸款類型
+                <select id="s2LoanType">
+                  <option value="mortgage">房屋貸款</option>
+                  <option value="credit">信用貸款</option>
+                </select>
+              </label>
+              <label>
+                貸款金額
+                <input id="s2LoanAmount" type="number" inputmode="decimal" min="0" step="10000" value="3000000" />
+              </label>
+              <label>
+                貸款年利率（%）
+                <input id="s2LoanRate" type="number" inputmode="decimal" min="0" step="0.01" value="3.5" />
+              </label>
+              <label>
+                貸款年期
+                <input id="s2LoanYears" type="number" inputmode="numeric" min="1" step="1" value="7" />
+              </label>
+              <label>
+                保單年配現率（%）
+                <input id="s2PolicyYield" type="number" inputmode="decimal" min="0" step="0.1" value="8" />
+              </label>
+              <label>
+                解約時保單價值率（%）
+                <input id="s2PolicyValueRate" type="number" inputmode="decimal" min="0" step="0.1" value="100" />
+              </label>
+              <label>
+                保單預測情境
+                <select id="s2PolicyScenario">
+                  <option value="flat">平穩</option>
+                  <option value="up20">偏牛</option>
+                  <option value="down20">偏熊</option>
+                  <option value="normal">劇烈</option>
+                </select>
+              </label>
+            </div>
+            <div class="loan-summary-grid">
+              <article>
+                <span>貸款月付</span>
+                <strong id="s2LoanPayment">-</strong>
+              </article>
+              <article>
+                <span>保單月配現</span>
+                <strong id="s2PolicyCash">-</strong>
+              </article>
+              <article>
+                <span>每月實際需支出</span>
+                <strong id="s2NetOutflow">-</strong>
+              </article>
+              <article class="highlight">
+                <span>最佳套現期數</span>
+                <strong id="s2BestMonth">-</strong>
+              </article>
+            </div>
+            <div class="table-wrap loan-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>期數</th>
+                    <th>貸款餘額</th>
+                    <th>保單價值</th>
+                    <th>實際套現金額</th>
+                    <th>累積實際繳款</th>
+                    <th>報酬率</th>
+                  </tr>
+                </thead>
+                <tbody id="s2Rows"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+      </div>
 
     </main>
 
