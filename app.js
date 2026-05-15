@@ -917,6 +917,12 @@ function bindEvents() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
+  document.querySelectorAll("[data-nav-change]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("s2NavChange48").value = button.dataset.navChange;
+      renderLoanArbitrageV2();
+    });
+  });
   $("refreshData").addEventListener("click", refreshMarket);
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => {
