@@ -281,17 +281,8 @@
                 <input id="s2PolicyYield" type="number" inputmode="decimal" min="0" step="0.1" value="8" />
               </label>
               <label>
-                解約時保單價值率（%）
-                <input id="s2PolicyValueRate" type="number" inputmode="decimal" min="0" step="0.1" value="100" />
-              </label>
-              <label>
-                保單預測情境
-                <select id="s2PolicyScenario">
-                  <option value="flat">平穩</option>
-                  <option value="up20">偏牛</option>
-                  <option value="down20">偏熊</option>
-                  <option value="normal">劇烈</option>
-                </select>
+                假設至第48期淨值變化（%）
+                <input id="s2NavChange48" type="text" inputmode="decimal" value="0" />
               </label>
             </div>
             <div class="loan-summary-grid">
@@ -308,8 +299,12 @@
                 <strong id="s2NetOutflow">-</strong>
               </article>
               <article class="highlight">
-                <span>最佳套現期數</span>
-                <strong id="s2BestMonth">-</strong>
+                <span>第48期套利金額</span>
+                <strong id="s2Month48CashOut">-</strong>
+              </article>
+              <article class="highlight">
+                <span>第48期投資報酬率</span>
+                <strong id="s2Month48Roi">-</strong>
               </article>
             </div>
             <div class="table-wrap loan-table-wrap">
