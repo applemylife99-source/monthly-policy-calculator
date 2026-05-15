@@ -514,6 +514,69 @@ function policyProjectionRowV2(projection, month) {
   };
 }
 
+function smoothStepV2(value) {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
+
+function navMultiplierToMonth48V2(month, changeRate) {
+  const progress = month <= 48 ? smoothStepV2(month / 48) : 1;
+  return Math.max(0.2, 1 + changeRate * progress);
+}
+
+function simulateCuicanAlliancePolicyForLoanV2(capitalTwd, annualCashRate, navChangeAtMonth48, maxMonths = 720) {
+  const baseInput = inputs();
+  const product = products.cuican;
+  const fx = baseInput.fx || 1;
+  const capitalUsd = capitalTwd / fx;
+  const cashNav = baseInput.cashNav || 0;
+  const cashDividend = baseInput.cashDiv || 0;
+  const distributionYield = cashNav ? (cashDividend * 12) / cashNav : 0;
+  const rawCashRatio = distributionYield ? annualCashRate / distributionYield : 1;
+  const cashRatio = Math.max(0, Math.min(1, rawCashRatio));
+
+  let cashUnits = cashNav ? capitalUsd / cashNav : 0;
+  let cumulativeCashUsd = 0;
+  const rows = [];
+
+  for (let month = 1; month <= maxMonths; month += 1) {
+    const year = policyYear(month);
+    const attainedAge = baseInput.age + Math.floor((month - 1) / 12);
+    const payoutNav = cashNav * navMultiplierToMonth48V2(month, navChangeAtMonth48);
+    const payoutDistribution = cashUnits * cashDividend;
+    const monthlyCashUsd = payoutDistribution * cashRatio;
+    const reinvest = Math.max(0, payoutDistribution - monthlyCashUsd);
+    if (payoutNav > 0) cashUnits += reinvest / payoutNav;
+
+    const accountValueUsd = cashUnits * payoutNav;
+    const monthlyRate = feeRateFor(product, year);
+    const adminFeeUsd = product.policyFeeTwd / fx;
+    const currentMinimumDeathBenefitTwd = capitalTwd * minDeathBenefitRatio(attainedAge, product);
+    const netRiskTwd = Math.max(0, currentMinimumDeathBenefitTwd - accountValueUsd * fx);
+    const insuranceCostUsd = monthlyInsuranceCost(netRiskTwd, attainedAge, baseInput.gender, product.mortalityTable) / fx;
+    const platformFeeUsd = accountValueUsd * monthlyRate + adminFeeUsd + insuranceCostUsd;
+    if (payoutNav > 0) cashUnits = Math.max(0, cashUnits - platformFeeUsd / payoutNav);
+
+    cumulativeCashUsd += monthlyCashUsd;
+    rows.push({
+      month,
+      monthlyCashTwd: monthlyCashUsd * fx,
+      cumulativeCashTwd: cumulativeCashUsd * fx,
+      policyValueTwd: cashUnits * payoutNav * fx,
+      navTwd: payoutNav * fx,
+    });
+  }
+
+  return {
+    rows,
+    summary: {
+      monthlyCashTwd: rows[0]?.monthlyCashTwd || (capitalTwd * annualCashRate) / 12,
+      cashRatio,
+      rawCashRatio,
+    },
+  };
+}
+
 function renderProducts() {
   $("product").innerHTML = Object.entries(products)
     .map(([key, product]) => `<option value="${key}" ${key === "cuican" ? "selected" : ""}>${product.name}｜${product.insurer}</option>`)
@@ -770,11 +833,10 @@ function renderLoanArbitrageV2() {
   const s2LoanRate = loanRateV2("s2LoanRate");
   const s2LoanYears = loanNumberV2("s2LoanYears");
   const s2PolicyYield = loanRateV2("s2PolicyYield");
-  const s2PolicyValueRate = loanRateV2("s2PolicyValueRate");
-  const s2PolicyScenario = $("s2PolicyScenario").value;
+  const s2NavChange48 = loanRateV2("s2NavChange48");
   const s2TermMonths = Math.max(0, Math.round(s2LoanYears * 12));
   const s2LoanPayment = amortizedPaymentV2(s2LoanAmount, s2LoanRate, s2LoanYears);
-  const s2PolicyProjection = simulatePolicyForLoanV2(s2PolicyScenario, s2LoanAmount, s2PolicyYield, Math.max(48, s2TermMonths));
+  const s2PolicyProjection = simulateCuicanAlliancePolicyForLoanV2(s2LoanAmount, s2PolicyYield, s2NavChange48, Math.max(48, s2TermMonths));
   const s2PolicyCash = s2PolicyProjection.summary.monthlyCashTwd;
   const s2NetOutflow = s2LoanPayment - s2PolicyCash;
 
@@ -783,89 +845,21 @@ function renderLoanArbitrageV2() {
   $("s2NetOutflow").textContent = fmtMoney(s2NetOutflow);
 
   if (s2TermMonths < 48) {
-    $("s2BestMonth").textContent = "期數不足";
+    $("s2Month48CashOut").textContent = "期數不足";
+    $("s2Month48Roi").textContent = "-";
     $("s2Rows").innerHTML = `<tr><td data-label="期數" colspan="6">貸款年期需滿 48 期，才會開始列出解約償還試算。</td></tr>`;
     return;
   }
 
   const rows = [];
-  let best = null;
+  let month48Result = null;
   let cumulativeOutflow = 0;
   for (let month = 48; month <= s2TermMonths; month += 1) {
     const balance = remainingBalanceV2(s2LoanAmount, s2LoanRate, s2LoanYears, month);
     const policyRow = policyProjectionRowV2(s2PolicyProjection, month);
-    const policyValue = policyRow.policyValueTwd * s2PolicyValueRate;
+    const policyValue = policyRow.policyValueTwd;
     cumulativeOutflow = s2PolicyProjection.rows
       .slice(0, month)
       .reduce((sum, row) => sum + s2LoanPayment - row.monthlyCashTwd, 0);
     const cashOut = policyValue - balance;
-    const roi = cumulativeOutflow > 0 ? cashOut / cumulativeOutflow : null;
-    const row = { month, balance, policyValue, cashOut, cumulativeOutflow, roi };
-    rows.push(row);
-    if (!best || cashOut > best.cashOut) best = row;
-  }
-
-  $("s2BestMonth").textContent = best ? `${best.month} 期｜${fmtMoney(best.cashOut)}` : "-";
-  $("s2Rows").innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td data-label="期數">${row.month}</td>
-          <td data-label="貸款餘額">${fmtMoney(row.balance)}</td>
-          <td data-label="保單價值">${fmtMoney(row.policyValue)}</td>
-          <td data-label="實際套現金額">${fmtMoney(row.cashOut)}</td>
-          <td data-label="累積實際繳款">${fmtMoney(row.cumulativeOutflow)}</td>
-          <td data-label="報酬率">${fmtLoanRoiV2(row.cashOut, row.cumulativeOutflow)}</td>
-        </tr>
-      `,
-    )
-    .join("");
-}
-
-function bindEvents() {
-  ["product", "singleFund", "dualCashFund", "dualStockFund", "age", "gender", "capital", "targetYield", "fx", "cashNav", "cashDiv", "stockNav", "stockDiv"].forEach((id) => {
-    $(id).addEventListener("input", () => {
-      renderFeatures();
-      renderResults();
-    });
-  });
-  [
-    "s1MortgageAmount",
-    "s1MortgageRate",
-    "s1MortgageYears",
-    "s1FlexAmount",
-    "s1FlexRate",
-    "s1PolicyYield",
-    "s2LoanType",
-    "s2LoanAmount",
-    "s2LoanRate",
-    "s2LoanYears",
-    "s2PolicyYield",
-    "s2PolicyValueRate",
-    "s2PolicyScenario",
-  ].forEach((id) => {
-    $(id).addEventListener("input", renderLoanArbitrageV2);
-  });
-  document.querySelectorAll(".app-switch-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      const target = button.dataset.view;
-      document.querySelectorAll(".app-switch-button").forEach((item) => item.classList.toggle("is-active", item === button));
-      document.querySelectorAll(".app-view").forEach((view) => view.classList.toggle("is-active", view.id === target));
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-  });
-  $("refreshData").addEventListener("click", refreshMarket);
-  document.querySelectorAll(".tab").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.scenario = button.dataset.scenario;
-      state.scenarioSeeds[state.scenario] = Date.now() + Math.floor(Math.random() * 1000000);
-      document.querySelectorAll(".tab").forEach((item) => item.classList.toggle("is-active", item === button));
-      renderResults();
-    });
-  });
-}
-
-renderProducts();
-renderFeatures();
-bindEvents();
-refreshMarket();
+    const roi = cumulativeO
