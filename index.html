@@ -282,7 +282,12 @@
               </label>
               <label>
                 假設至第48期淨值變化（%）
-                <input id="s2NavChange48" type="text" inputmode="decimal" value="0" />
+                <input id="s2NavChange48" type="text" inputmode="text" autocomplete="off" placeholder="+20 / -20" value="0" />
+                <span class="quick-inputs" aria-label="快速輸入淨值變化">
+                  <button type="button" data-nav-change="-20">-20</button>
+                  <button type="button" data-nav-change="0">0</button>
+                  <button type="button" data-nav-change="20">+20</button>
+                </span>
               </label>
             </div>
             <div class="loan-summary-grid">
