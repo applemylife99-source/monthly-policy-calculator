@@ -86,10 +86,10 @@ const FUND_LABELS = {
 };
 
 const SCENARIO_PROFILES = {
-  flat: { annualDrift: 0, annualVol: 0.07, label: "平穩", meanReversion: 0.35, rangeBand: 0.12 },
-  up20: { annualDrift: 0.052, annualVol: 0.18, label: "偏牛" },
-  down20: { annualDrift: 0.018, annualVol: 0.2, label: "偏熊" },
-  normal: { annualDrift: 0.04, annualVol: 0.28, label: "劇烈" },
+  flat: { annualDrift: 0, annualVol: 0.09, label: "平穩", meanReversion: 0.3, rangeBand: 0.15, centerLevel: 0.98 },
+  up20: { annualDrift: 0.025, annualVol: 0.2, label: "偏牛" },
+  down20: { annualDrift: -0.01, annualVol: 0.22, label: "偏熊" },
+  normal: { annualDrift: 0.005, annualVol: 0.32, label: "劇烈" },
 };
 
 const MORTALITY_TABLES = {
@@ -220,12 +220,13 @@ function scenarioNavPoint(baseNav, month, scenario, seed) {
     let level = 1;
     let previousLevel = 1;
     let change = 0;
-    const lowerBand = 1 - profile.rangeBand;
-    const upperBand = 1 + profile.rangeBand;
+    const centerLevel = profile.centerLevel || 1;
+    const lowerBand = centerLevel - profile.rangeBand;
+    const upperBand = centerLevel + profile.rangeBand;
     for (let i = 1; i <= month; i += 1) {
       previousLevel = level;
       const shock = monthlyVol * seededNormal(seed + i);
-      const pullBack = (1 - level) * profile.meanReversion;
+      const pullBack = (centerLevel - level) * profile.meanReversion;
       level = Math.min(upperBand, Math.max(lowerBand, level + pullBack + shock));
       change = level / previousLevel - 1;
     }
@@ -406,6 +407,113 @@ function simulate(scenarioName) {
   };
 }
 
+function loanPolicyInputsV2(capitalTwd, annualCashRate) {
+  return {
+    ...inputs(),
+    capitalTwd,
+    targetYield: annualCashRate,
+  };
+}
+
+function simulatePolicyForLoanV2(scenarioName, capitalTwd, annualCashRate, maxMonths = 720) {
+  const input = loanPolicyInputsV2(capitalTwd, annualCashRate);
+  const product = input.product;
+  const capitalUsd = input.fx ? input.capitalTwd / input.fx : 0;
+  const targetMonthlyCashUsd = (capitalUsd * input.targetYield) / 12;
+  const payoutFundKey = product.mode === "dual" ? input.dualCashFund : input.singleFund;
+  const growthFundKey = product.mode === "dual" ? input.dualStockFund : null;
+  const payoutFund = fundSnapshot(input, payoutFundKey);
+  const growthFund = growthFundKey ? fundSnapshot(input, growthFundKey) : null;
+  const distributionYield = payoutFund.yield;
+  const rawCashRatio = distributionYield ? input.targetYield / distributionYield : 1;
+  const cashRatio = Math.max(0, Math.min(1, rawCashRatio));
+  const stockRatio = product.mode === "dual" ? 1 - cashRatio : 0;
+
+  let cashUnits = payoutFund.nav ? (capitalUsd * (product.mode === "dual" ? cashRatio : 1)) / payoutFund.nav : 0;
+  let stockUnits = product.mode === "dual" && growthFund?.nav ? (capitalUsd * stockRatio) / growthFund.nav : 0;
+  let cumulativeCashUsd = 0;
+  let annualValueSumUsd = 0;
+  let annualValueMonths = 0;
+  const rows = [];
+  const seedBase = Math.round(input.age * 13 + input.capitalTwd / 100000 + input.targetYield * 1000);
+  const seed = seedBase + (state.scenarioSeeds[scenarioName] || 0);
+
+  for (let month = 1; month <= maxMonths; month += 1) {
+    const year = policyYear(month);
+    const attainedAge = input.age + Math.floor((month - 1) / 12);
+    const cashNavPoint = scenarioNavPoint(input.cashNav, month, scenarioName, seed);
+    const stockNavPoint = scenarioNavPoint(input.stockNav, month, scenarioName, seed + 97);
+    const payoutPoint = fundPoint(payoutFundKey, cashNavPoint, stockNavPoint);
+    const growthPoint = growthFundKey ? fundPoint(growthFundKey, cashNavPoint, stockNavPoint) : null;
+    const payoutNav = payoutPoint.nav;
+    const growthNav = growthPoint?.nav || 0;
+    const payoutDistribution = cashUnits * payoutFund.dividend;
+    const growthDistribution = stockUnits * (growthFund?.dividend || 0);
+    let monthlyCashUsd = 0;
+
+    if (product.mode === "dual") {
+      monthlyCashUsd = payoutDistribution;
+      if (growthNav > 0) stockUnits += growthDistribution / growthNav;
+    } else {
+      monthlyCashUsd = payoutDistribution * cashRatio;
+      const reinvest = Math.max(0, payoutDistribution - monthlyCashUsd);
+      if (payoutNav > 0) cashUnits += reinvest / payoutNav;
+    }
+
+    const accountValueUsd = cashUnits * payoutNav + stockUnits * growthNav;
+    const monthlyRate = feeRateFor(product, year);
+    const adminFeeUsd = input.capitalTwd >= product.policyFeeWaiverTwd ? 0 : product.policyFeeTwd / input.fx;
+    const currentMinimumDeathBenefitTwd = input.capitalTwd * minDeathBenefitRatio(attainedAge, product);
+    const netRiskTwd = Math.max(0, currentMinimumDeathBenefitTwd - accountValueUsd * input.fx);
+    const insuranceCostUsd = monthlyInsuranceCost(netRiskTwd, attainedAge, input.gender, product.mortalityTable) / input.fx;
+    const platformFeeUsd = accountValueUsd * monthlyRate + adminFeeUsd + insuranceCostUsd;
+
+    if (product.mode === "dual" && stockUnits > 0 && growthNav > 0) {
+      stockUnits = Math.max(0, stockUnits - platformFeeUsd / growthNav);
+    } else if (payoutNav > 0) {
+      cashUnits = Math.max(0, cashUnits - platformFeeUsd / payoutNav);
+    }
+
+    cumulativeCashUsd += monthlyCashUsd;
+    let grossValueUsd = cashUnits * payoutNav + stockUnits * growthNav;
+    annualValueSumUsd += grossValueUsd;
+    annualValueMonths += 1;
+    if (product.loyaltyBonusRate && month % 12 === 0 && year >= product.loyaltyBonusStartYear) {
+      const loyaltyBonusUsd = (annualValueSumUsd / annualValueMonths) * product.loyaltyBonusRate;
+      if (payoutNav > 0) cashUnits += loyaltyBonusUsd / payoutNav;
+      grossValueUsd = cashUnits * payoutNav + stockUnits * growthNav;
+    }
+    if (month % 12 === 0) {
+      annualValueSumUsd = 0;
+      annualValueMonths = 0;
+    }
+
+    rows.push({
+      month,
+      monthlyCashTwd: monthlyCashUsd * input.fx,
+      cumulativeCashTwd: cumulativeCashUsd * input.fx,
+      policyValueTwd: grossValueUsd * input.fx,
+    });
+  }
+
+  return {
+    rows,
+    summary: {
+      monthlyCashTwd: rows[0]?.monthlyCashTwd || targetMonthlyCashUsd * input.fx,
+      cashRatio,
+      rawCashRatio,
+    },
+  };
+}
+
+function policyProjectionRowV2(projection, month) {
+  return projection.rows[Math.min(Math.max(month, 1), projection.rows.length) - 1] || {
+    monthlyCashTwd: 0,
+    cumulativeCashTwd: 0,
+    policyValueTwd: 0,
+  };
+}
+
 function renderProducts() {
   $("product").innerHTML = Object.entries(products)
     .map(([key, product]) => `<option value="${key}" ${key === "cuican" ? "selected" : ""}>${product.name}｜${product.insurer}</option>`)
@@ -496,6 +604,7 @@ function renderResults() {
       `,
     )
     .join("");
+  renderLoanArbitrageV2();
 }
 
 function renderValueChart(rows) {
@@ -607,11 +716,142 @@ async function refreshMarket() {
   renderResults();
 }
 
+function loanNumberV2(id) {
+  return Number($(id)?.value || 0);
+}
+
+function loanRateV2(id) {
+  return loanNumberV2(id) / 100;
+}
+
+function amortizedPaymentV2(principal, annualRate, years) {
+  const months = Math.max(0, Math.round(years * 12));
+  if (!principal || !months) return 0;
+  const monthlyRate = annualRate / 12;
+  if (!monthlyRate) return principal / months;
+  return (principal * monthlyRate) / (1 - (1 + monthlyRate) ** -months);
+}
+
+function remainingBalanceV2(principal, annualRate, years, paidMonths) {
+  const months = Math.max(0, Math.round(years * 12));
+  const month = Math.min(Math.max(0, paidMonths), months);
+  if (!principal || !months) return 0;
+  const payment = amortizedPaymentV2(principal, annualRate, years);
+  const monthlyRate = annualRate / 12;
+  if (!monthlyRate) return Math.max(0, principal - payment * month);
+  return Math.max(0, principal * (1 + monthlyRate) ** month - payment * (((1 + monthlyRate) ** month - 1) / monthlyRate));
+}
+
+function fmtLoanRoiV2(cashOut, cumulativeOutflow) {
+  if (cumulativeOutflow <= 0) return "配息已覆蓋";
+  return fmtPct(cashOut / cumulativeOutflow, 1);
+}
+
+function renderLoanArbitrageV2() {
+  if (!$("loanArbitrage")) return;
+
+  const s1MortgageAmount = loanNumberV2("s1MortgageAmount");
+  const s1MortgageRate = loanRateV2("s1MortgageRate");
+  const s1MortgageYears = loanNumberV2("s1MortgageYears");
+  const s1FlexAmount = loanNumberV2("s1FlexAmount");
+  const s1FlexRate = loanRateV2("s1FlexRate");
+  const s1PolicyYield = loanRateV2("s1PolicyYield");
+  const s1MortgagePayment = amortizedPaymentV2(s1MortgageAmount, s1MortgageRate, s1MortgageYears);
+  const s1FlexInterest = (s1FlexAmount * s1FlexRate) / 12;
+  const s1PolicyCash = (s1FlexAmount * s1PolicyYield) / 12;
+  const s1NetOutflow = s1MortgagePayment + s1FlexInterest - s1PolicyCash;
+
+  $("s1MortgagePayment").textContent = fmtMoney(s1MortgagePayment);
+  $("s1FlexInterest").textContent = fmtMoney(s1FlexInterest);
+  $("s1PolicyCash").textContent = fmtMoney(s1PolicyCash);
+  $("s1NetOutflow").textContent = fmtMoney(s1NetOutflow);
+
+  const s2LoanAmount = loanNumberV2("s2LoanAmount");
+  const s2LoanRate = loanRateV2("s2LoanRate");
+  const s2LoanYears = loanNumberV2("s2LoanYears");
+  const s2PolicyYield = loanRateV2("s2PolicyYield");
+  const s2PolicyValueRate = loanRateV2("s2PolicyValueRate");
+  const s2PolicyScenario = $("s2PolicyScenario").value;
+  const s2TermMonths = Math.max(0, Math.round(s2LoanYears * 12));
+  const s2LoanPayment = amortizedPaymentV2(s2LoanAmount, s2LoanRate, s2LoanYears);
+  const s2PolicyProjection = simulatePolicyForLoanV2(s2PolicyScenario, s2LoanAmount, s2PolicyYield, Math.max(48, s2TermMonths));
+  const s2PolicyCash = s2PolicyProjection.summary.monthlyCashTwd;
+  const s2NetOutflow = s2LoanPayment - s2PolicyCash;
+
+  $("s2LoanPayment").textContent = fmtMoney(s2LoanPayment);
+  $("s2PolicyCash").textContent = fmtMoney(s2PolicyCash);
+  $("s2NetOutflow").textContent = fmtMoney(s2NetOutflow);
+
+  if (s2TermMonths < 48) {
+    $("s2BestMonth").textContent = "期數不足";
+    $("s2Rows").innerHTML = `<tr><td data-label="期數" colspan="6">貸款年期需滿 48 期，才會開始列出解約償還試算。</td></tr>`;
+    return;
+  }
+
+  const rows = [];
+  let best = null;
+  let cumulativeOutflow = 0;
+  for (let month = 48; month <= s2TermMonths; month += 1) {
+    const balance = remainingBalanceV2(s2LoanAmount, s2LoanRate, s2LoanYears, month);
+    const policyRow = policyProjectionRowV2(s2PolicyProjection, month);
+    const policyValue = policyRow.policyValueTwd * s2PolicyValueRate;
+    cumulativeOutflow = s2PolicyProjection.rows
+      .slice(0, month)
+      .reduce((sum, row) => sum + s2LoanPayment - row.monthlyCashTwd, 0);
+    const cashOut = policyValue - balance;
+    const roi = cumulativeOutflow > 0 ? cashOut / cumulativeOutflow : null;
+    const row = { month, balance, policyValue, cashOut, cumulativeOutflow, roi };
+    rows.push(row);
+    if (!best || cashOut > best.cashOut) best = row;
+  }
+
+  $("s2BestMonth").textContent = best ? `${best.month} 期｜${fmtMoney(best.cashOut)}` : "-";
+  $("s2Rows").innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <td data-label="期數">${row.month}</td>
+          <td data-label="貸款餘額">${fmtMoney(row.balance)}</td>
+          <td data-label="保單價值">${fmtMoney(row.policyValue)}</td>
+          <td data-label="實際套現金額">${fmtMoney(row.cashOut)}</td>
+          <td data-label="累積實際繳款">${fmtMoney(row.cumulativeOutflow)}</td>
+          <td data-label="報酬率">${fmtLoanRoiV2(row.cashOut, row.cumulativeOutflow)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
 function bindEvents() {
   ["product", "singleFund", "dualCashFund", "dualStockFund", "age", "gender", "capital", "targetYield", "fx", "cashNav", "cashDiv", "stockNav", "stockDiv"].forEach((id) => {
     $(id).addEventListener("input", () => {
       renderFeatures();
       renderResults();
+    });
+  });
+  [
+    "s1MortgageAmount",
+    "s1MortgageRate",
+    "s1MortgageYears",
+    "s1FlexAmount",
+    "s1FlexRate",
+    "s1PolicyYield",
+    "s2LoanType",
+    "s2LoanAmount",
+    "s2LoanRate",
+    "s2LoanYears",
+    "s2PolicyYield",
+    "s2PolicyValueRate",
+    "s2PolicyScenario",
+  ].forEach((id) => {
+    $(id).addEventListener("input", renderLoanArbitrageV2);
+  });
+  document.querySelectorAll(".app-switch-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.view;
+      document.querySelectorAll(".app-switch-button").forEach((item) => item.classList.toggle("is-active", item === button));
+      document.querySelectorAll(".app-view").forEach((view) => view.classList.toggle("is-active", view.id === target));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
   $("refreshData").addEventListener("click", refreshMarket);
