@@ -862,4 +862,73 @@ function renderLoanArbitrageV2() {
       .slice(0, month)
       .reduce((sum, row) => sum + s2LoanPayment - row.monthlyCashTwd, 0);
     const cashOut = policyValue - balance;
-    const roi = cumulativeO
+    const roi = cumulativeOutflow > 0 ? cashOut / cumulativeOutflow : null;
+    const row = { month, balance, policyValue, cashOut, cumulativeOutflow, roi };
+    rows.push(row);
+    if (month === 48) month48Result = row;
+  }
+
+  $("s2Month48CashOut").textContent = month48Result ? fmtMoney(month48Result.cashOut) : "-";
+  $("s2Month48Roi").textContent = month48Result ? fmtLoanRoiV2(month48Result.cashOut, month48Result.cumulativeOutflow) : "-";
+  $("s2Rows").innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <td data-label="期數">${row.month}</td>
+          <td data-label="貸款餘額">${fmtMoney(row.balance)}</td>
+          <td data-label="保單價值">${fmtMoney(row.policyValue)}</td>
+          <td data-label="實際套現金額">${fmtMoney(row.cashOut)}</td>
+          <td data-label="累積實際繳款">${fmtMoney(row.cumulativeOutflow)}</td>
+          <td data-label="報酬率">${fmtLoanRoiV2(row.cashOut, row.cumulativeOutflow)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function bindEvents() {
+  ["product", "singleFund", "dualCashFund", "dualStockFund", "age", "gender", "capital", "targetYield", "fx", "cashNav", "cashDiv", "stockNav", "stockDiv"].forEach((id) => {
+    $(id).addEventListener("input", () => {
+      renderFeatures();
+      renderResults();
+    });
+  });
+  [
+    "s1MortgageAmount",
+    "s1MortgageRate",
+    "s1MortgageYears",
+    "s1FlexAmount",
+    "s1FlexRate",
+    "s1PolicyYield",
+    "s2LoanType",
+    "s2LoanAmount",
+    "s2LoanRate",
+    "s2LoanYears",
+    "s2PolicyYield",
+    "s2NavChange48",
+  ].forEach((id) => {
+    $(id).addEventListener("input", renderLoanArbitrageV2);
+  });
+  document.querySelectorAll(".app-switch-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.view;
+      document.querySelectorAll(".app-switch-button").forEach((item) => item.classList.toggle("is-active", item === button));
+      document.querySelectorAll(".app-view").forEach((view) => view.classList.toggle("is-active", view.id === target));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+  $("refreshData").addEventListener("click", refreshMarket);
+  document.querySelectorAll(".tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.scenario = button.dataset.scenario;
+      state.scenarioSeeds[state.scenario] = Date.now() + Math.floor(Math.random() * 1000000);
+      document.querySelectorAll(".tab").forEach((item) => item.classList.toggle("is-active", item === button));
+      renderResults();
+    });
+  });
+}
+
+renderProducts();
+renderFeatures();
+bindEvents();
+refreshMarket();
