@@ -701,6 +701,22 @@ tbody tr:nth-child(even) td:first-child {
   margin-top: 0;
 }
 
+.quick-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.quick-inputs button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--green-3);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 900;
+}
+
 @media (min-width: 760px) {
   .input-panel {
     grid-template-columns: repeat(4, 1fr);
