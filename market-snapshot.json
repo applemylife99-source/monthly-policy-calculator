@@ -1,0 +1,40 @@
+{
+  "updatedAt": "2026-10-13T09:47:44.758Z",
+  "funds": {
+    "cash": {
+      "name": "聯博-美國成長基金AP(總報酬月配)級別美元",
+      "cnyesCode": "B030870",
+      "moneyDjCode": "albt8",
+      "nav": 73.74,
+      "dividend": 0.8322,
+      "navDate": "10/12",
+      "dividendDate": "2026/09/30",
+      "sourceStatus": [
+        "鉅亨淨值已更新",
+        "MoneyDJ配息已更新"
+      ],
+      "dividendCurrency": "美元",
+      "annualDistributionRate": 0.1354271765663141
+    },
+    "stock": {
+      "name": "貝萊德世界科技基金A10美元(總報酬穩定配息)",
+      "cnyesCode": "B090460",
+      "moneyDjCode": "SHZV9",
+      "nav": 21.73,
+      "dividend": 0.153,
+      "navDate": "10/12",
+      "dividendDate": "2026/09/30",
+      "sourceStatus": [
+        "鉅亨淨值已更新",
+        "MoneyDJ配息已更新"
+      ],
+      "dividendCurrency": "美元",
+      "annualDistributionRate": 0.0844914864242982
+    }
+  },
+  "usdTwd": {
+    "rate": 31.958914,
+    "date": "Mon, 12 Oct 2026 23:57:31 +0000",
+    "sourceStatus": "匯率已更新"
+  }
+}
