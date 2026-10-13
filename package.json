@@ -1,12 +1,14 @@
 {
   "name": "monthly-policy-calculator",
-  "version": "1.0.0",
+  "version": "2.1.4",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node test-server.mjs"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "description": "月配息保單、房貸減壓與貸款套利計算機"
 }
