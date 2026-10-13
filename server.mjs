@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
 const PORT = Number(process.env.PORT || 4173);
-const ROOT = process.cwd();
+const ROOT = new URL(".", import.meta.url).pathname;
+const SNAPSHOT = JSON.parse(await readFile(new URL("./market-snapshot.json", import.meta.url), "utf8"));
+let lastMarket = SNAPSHOT;
+let cacheUntil = 0;
+let pendingMarket = null;
 
 const FUNDS = {
   cash: {
@@ -82,81 +86,53 @@ function parseMoneyDjDividend(html) {
   };
 }
 
-async function getFundData(fund) {
-  const result = {
-    name: fund.name,
-    cnyesCode: fund.cnyesCode,
-    moneyDjCode: fund.moneyDjCode,
-    nav: fund.fallbackNav,
-    dividend: fund.fallbackDividend,
-    navDate: "fallback",
-    dividendDate: "fallback",
-    sourceStatus: [],
-  };
-
-  try {
-    const navHtml = await fetchText(fund.cnyesUrl);
-    const nav = parseCnyesNav(navHtml);
-    if (nav?.nav) Object.assign(result, nav);
-    result.sourceStatus.push("鉅亨淨值已更新");
-  } catch (error) {
-    result.sourceStatus.push(`鉅亨淨值使用備援：${error.message}`);
-  }
-
-  try {
-    const divHtml = await fetchText(`https://m.moneydj.com/B5.aspx?a=${fund.moneyDjCode}`);
-    const dividend = parseMoneyDjDividend(divHtml);
-    if (dividend?.dividend) Object.assign(result, dividend);
-    result.sourceStatus.push("MoneyDJ配息已更新");
-  } catch (error) {
-    result.sourceStatus.push(`MoneyDJ配息使用備援：${error.message}`);
-  }
-
-  result.annualDistributionRate = result.nav ? (result.dividend * 12) / result.nav : 0;
+async function getFundData(fund, key) {
+  const previous = lastMarket.funds[key];
+  const result = { ...previous, name: fund.name, cnyesCode: fund.cnyesCode, moneyDjCode: fund.moneyDjCode, sourceStatus: [] };
+  const [navResult, dividendResult] = await Promise.allSettled([
+    fetchText(fund.cnyesUrl).then(html => { const parsed = parseCnyesNav(html); if (!(parsed?.nav > 0)) throw new Error("淨值格式無法辨識"); return parsed; }),
+    fetchText(`https://m.moneydj.com/B5.aspx?a=${fund.moneyDjCode}`).then(html => { const parsed = parseMoneyDjDividend(html); if (!(parsed?.dividend > 0)) throw new Error("配息格式無法辨識"); return parsed; }),
+  ]);
+  if (navResult.status === "fulfilled") { Object.assign(result, navResult.value); result.sourceStatus.push("鉅亨淨值已更新"); }
+  else result.sourceStatus.push("鉅亨淨值使用最近成功資料備援");
+  if (dividendResult.status === "fulfilled") { Object.assign(result, dividendResult.value); result.sourceStatus.push("MoneyDJ配息已更新"); }
+  else result.sourceStatus.push("MoneyDJ配息使用最近成功資料備援");
+  result.annualDistributionRate = result.dividend * 12 / result.nav;
   return result;
 }
 
 async function getUsdTwd() {
   try {
-    const json = await (await fetch("https://open.er-api.com/v6/latest/USD")).json();
-    if (json?.rates?.TWD) {
-      return {
-        rate: Number(json.rates.TWD),
-        date: json.time_last_update_utc || "latest",
-        sourceStatus: "匯率已更新",
-      };
-    }
-    throw new Error("TWD rate missing");
-  } catch (error) {
-    return {
-      rate: 31.55,
-      date: "fallback",
-      sourceStatus: `匯率使用備援：${error.message}`,
-    };
+    const json = JSON.parse(await fetchText("https://open.er-api.com/v6/latest/USD"));
+    if (!(json?.rates?.TWD > 0)) throw new Error("TWD rate missing");
+    return { rate: Number(json.rates.TWD), date: json.time_last_update_utc, sourceStatus: "匯率已更新" };
+  } catch {
+    return { ...lastMarket.usdTwd, sourceStatus: "匯率使用最近成功資料備援" };
   }
 }
 
 async function marketData() {
-  const [cash, stock, usdTwd] = await Promise.all([
-    getFundData(FUNDS.cash),
-    getFundData(FUNDS.stock),
-    getUsdTwd(),
-  ]);
-  return {
-    updatedAt: new Date().toISOString(),
-    funds: { cash, stock },
-    usdTwd,
-  };
+  if (Date.now() < cacheUntil) return lastMarket;
+  if (pendingMarket) return pendingMarket;
+  pendingMarket = (async () => {
+    const [cash, stock, usdTwd] = await Promise.all([getFundData(FUNDS.cash, "cash"), getFundData(FUNDS.stock, "stock"), getUsdTwd()]);
+    const stale = [usdTwd.sourceStatus, ...cash.sourceStatus, ...stock.sourceStatus].some(s => s.includes("備援"));
+    lastMarket = { updatedAt: new Date().toISOString(), funds: { cash, stock }, usdTwd, stale };
+    cacheUntil = Date.now() + (stale ? 60000 : 300000);
+    return lastMarket;
+  })().finally(() => { pendingMarket = null; });
+  return pendingMarket;
 }
 
 function sendJson(response, value) {
-  response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+  response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(value, null, 2));
 }
 
 async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  if (!["/index.html", "/app.js", "/styles.css"].includes(requested)) { response.writeHead(404); response.end("Not found"); return; }
   const filePath = normalize(join(ROOT, requested));
   if (!filePath.startsWith(ROOT)) {
     response.writeHead(403);
@@ -165,7 +141,7 @@ async function serveStatic(request, response) {
   }
   try {
     const file = await readFile(filePath);
-    response.writeHead(200, { "content-type": MIME[extname(filePath)] || "application/octet-stream" });
+    response.writeHead(200, { "content-type": MIME[extname(filePath)] || "application/octet-stream", "cache-control": "no-store", "x-content-type-options": "nosniff" });
     response.end(file);
   } catch {
     response.writeHead(404);
@@ -175,7 +151,10 @@ async function serveStatic(request, response) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    if (request.url.startsWith("/api/market-data")) {
+    const path = new URL(request.url, "http://localhost").pathname;
+    if (path === "/favicon.ico") { response.writeHead(204); response.end(); return; }
+    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.4" }); return; }
+    if (path === "/api/market-data") {
       sendJson(response, await marketData());
       return;
     }
