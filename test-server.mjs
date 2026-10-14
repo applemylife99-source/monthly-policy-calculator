@@ -18,4 +18,4 @@ for(const offline of [true,false]){
  if(offline){assert.equal(a.funds.cash.nav,snapshot.funds.cash.nav);assert.equal(a.funds.cash.dividendDate,snapshot.funds.cash.dividendDate);assert.equal(a.usdTwd.rate,snapshot.usdTwd.rate);assert.ok(a.funds.cash.sourceStatus.some(s=>s.includes('備援')));}
  else {assert.equal(a.funds.cash.navDate,'2026/10/13');assert.equal(a.funds.cash.dividendDate,'2026/09/30');}
 }
-const html=await readFile(new URL('./index.html',import.meta.url),'utf8');assert.match(html,/2\.1\.6 試用版/);for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);assert.ok(html.includes('const INITIAL_MARKET='));console.log('PASS: direct sources, parsers, dated offline fallback, cache, concurrent refresh, approved HTML scripts');
+const html=await readFile(new URL('./index.html',import.meta.url),'utf8');assert.match(html,/2\.1\.7 試用版/);for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);assert.ok(html.includes('const INITIAL_MARKET='));console.log('PASS: direct sources, parsers, dated offline fallback, cache, concurrent refresh, approved HTML scripts');
