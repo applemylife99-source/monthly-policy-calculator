@@ -153,7 +153,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://localhost").pathname;
     if (path === "/favicon.ico") { response.writeHead(204); response.end(); return; }
-    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.7" }); return; }
+    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.8" }); return; }
     if (path === "/api/market-data") {
       sendJson(response, await marketData());
       return;
