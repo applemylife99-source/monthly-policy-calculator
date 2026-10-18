@@ -35,6 +35,7 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
   ".svg": "image/svg+xml",
 };
 
@@ -132,7 +133,7 @@ function sendJson(response, value) {
 async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-  if (!["/index.html", "/app.js", "/styles.css"].includes(requested)) { response.writeHead(404); response.end("Not found"); return; }
+  if (!["/index.html", "/app.js", "/styles.css", "/assets/pdf-engine.js", "/assets/Noto-LICENSE.txt"].includes(requested)) { response.writeHead(404); response.end("Not found"); return; }
   const filePath = normalize(join(ROOT, requested));
   if (!filePath.startsWith(ROOT)) {
     response.writeHead(403);
@@ -153,7 +154,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://localhost").pathname;
     if (path === "/favicon.ico") { response.writeHead(204); response.end(); return; }
-    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.8" }); return; }
+    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.9" }); return; }
     if (path === "/api/market-data") {
       sendJson(response, await marketData());
       return;
