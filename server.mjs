@@ -1,4 +1,6 @@
 import http from "node:http";
+import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
@@ -130,6 +132,17 @@ function sendJson(response, value) {
   response.end(JSON.stringify(value, null, 2));
 }
 
+let pdfEngineCache;
+async function readPdfEngine() {
+  if (pdfEngineCache) return pdfEngineCache;
+  const manifest = JSON.parse(await readFile(join(ROOT, "assets/pdf-parts/manifest.json"), "utf8"));
+  const chunks = await Promise.all(manifest.files.map(name => readFile(join(ROOT, "assets/pdf-parts", name), "utf8")));
+  const bytes = gunzipSync(Buffer.from(chunks.join(""), "base64"));
+  if (createHash("sha256").update(bytes).digest("hex") !== manifest.sha256) throw Error("PDF engine integrity check failed");
+  pdfEngineCache = bytes;
+  return bytes;
+}
+
 async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
@@ -141,7 +154,7 @@ async function serveStatic(request, response) {
     return;
   }
   try {
-    const file = await readFile(filePath);
+    const file = requested === "/assets/pdf-engine.js" ? await readPdfEngine() : await readFile(filePath);
     response.writeHead(200, { "content-type": MIME[extname(filePath)] || "application/octet-stream", "cache-control": "no-store", "x-content-type-options": "nosniff" });
     response.end(file);
   } catch {
