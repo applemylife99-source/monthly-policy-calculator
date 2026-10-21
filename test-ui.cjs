@@ -1,0 +1,31 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync('src/page.html','utf8'),snapshot=JSON.parse(fs.readFileSync('market-snapshot.json','utf8'));
+function setup(hash=''){
+ const elements={},buttons=[];
+ for(const match of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)){const attrs=Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)].map(m=>[m[1],m[2]]));elements[match[3]]={...attrs,value:attrs.value||'',textContent:'',innerHTML:'',hidden:false,style:{},focus(){},select(){},handlers:{},addEventListener(e,fn){this.handlers[e]=fn;},checkValidity(){if(!['number','range'].includes(this.type))return true;if(this.step==='any')return Number.isFinite(Number(this.value));const n=Number(this.value),step=Number(this.step||1),base=Number(this.min||0);return Number.isFinite(n)&&!(this.min!==undefined&&n<+this.min||this.max!==undefined&&n>+this.max)&&Math.abs((n-base)/step-Math.round((n-base)/step))<1e-7;}};}
+ for(const match of html.matchAll(/<button\b([^>]*)>/g)){const dataset=Object.fromEntries([...match[1].matchAll(/data-([a-z]+)="([^"]*)"/g)].map(m=>[m[1],m[2]]));buttons.push({dataset,handlers:{},addEventListener(e,fn){this.handlers[e]=fn;},setAttribute(){}});}
+ Object.assign(elements.gender,{value:'male'});Object.assign(elements.fund,{value:'0'});Object.assign(elements.payout,{value:'ratio'});Object.assign(elements.distributionMode,{value:'rate'});Object.assign(elements.capitalLink,{value:'1'});
+ const ctx={console,File,Blob,URL,URLSearchParams,AbortController,INITIAL_MARKET:snapshot,document:{body:{style:{overflow:'auto'}},getElementById:id=>elements[id],querySelectorAll:selector=>buttons.filter(b=>[...selector.matchAll(/data-([a-z]+)/g)].some(m=>m[1] in b.dataset))},location:{hash,href:'https://example.test/'+hash},localStorage:{getItem:()=>null,setItem(){}},navigator:{},window:{addEventListener(){}},clearTimeout(){},setTimeout:()=>0,fetch:()=>new Promise(()=>{})};vm.createContext(ctx);
+ vm.runInContext(['model.js','finance.js','ui.js'].map(n=>fs.readFileSync('src/'+n,'utf8')).join('\n'),ctx);
+ const run=s=>vm.runInContext(s,ctx);return {elements,buttons,ctx,run};
+}
+const {elements:e,buttons,ctx,run}=setup();
+assert.equal(e.inputError.textContent,'');assert.equal(e.firstCashResult.textContent,'NT$ 20,000');assert.equal(e.distributionMode.value,'rate');assert.equal(e.accumulationMonths.value,'0');assert.equal(e.customAllocationFields.hidden,true);
+const output='/tmp/policy220';fs.mkdirSync(output,{recursive:true});
+function save(name){assert.equal(run('buildPrintReport()'),true,e.inputError.textContent);fs.writeFileSync(output+'/'+name+'.html',e.printReport.innerHTML);assert.doesNotMatch(e.printReport.innerHTML,/璀璨人生|金采年華|鑫滿意足|智匯贏家|吉利發發|安聯|安達|法國巴黎/);}
+save('default');
+buttons.find(b=>b.dataset.accumulation==='12').handlers.click();assert.equal(e.accumulationMonths.value,'12');assert.equal(e.accumulationSlider.value,12);assert.match(e.firstCashLabel.textContent,/13/);assert.equal(e.policyStrategyPanel.hidden,false);assert.match(e.cashGrowth.textContent,/開始領現/);
+e.month.value='12';e.month.handlers.input();assert.equal(e.cashResult.textContent,'NT$ 0');assert.match(e.cashGrowth.textContent,/全回購/);assert.match(e.inflationVerdict.textContent,/尚未/);e.month.value='13';e.month.handlers.input();assert.notEqual(e.cashResult.textContent,'NT$ 0');assert.equal(e.firstCashResult.textContent,e.cashResult.textContent);
+e.distributionMode.value='allocation';e.distributionMode.handlers.input();assert.equal(e.legacyPayoutFields.hidden,true);assert.equal(e.customAllocationFields.hidden,false);e.cashPercentSlider.value='80';e.cashPercentSlider.handlers.input();assert.equal(run('result.fraction'),.8);save('single-12-80');
+e.product.value='zhihui';e.product.handlers.input();assert.match(e.cashPercentLabel.textContent,/配置/);assert.match(e.allocationHelp.textContent,/兩檔/);save('dual-12-80');
+e.accumulationMonths.value='120';e.accumulationMonths.handlers.input();save('dual-120-80');assert.match(e.printReport.innerHTML,/報告期間外/);assert.doesNotMatch(e.printReport.innerHTML,/NaN|Infinity/);
+e.distributionMode.value='rate';e.payout.value='fixed';e.accumulationMonths.value='12';e.product.value='cuican';run('render()');save('fixed-12');assert.equal(run('result.rows[12].cash'),20000);
+e.distributionMode.value='allocation';e.cashPercent.value='0';run('render()');save('single-12-zero');assert.equal(run('result.rows[12].cash'),0);
+for(const mode of ['mortgage','loan']){buttons.find(b=>b.dataset.mode===mode).handlers.click();assert.equal(e.policyAllocationMode.hidden,true);assert.equal(e.policyAccumulationFields.hidden,true);assert.equal(e.customAllocationFields.hidden,true);assert.equal(e.legacyPayoutFields.hidden,false);assert.equal(run('result.accumulationMonths'),0);assert.ok(run('result.rows[0].cash')>0);save(mode);assert.doesNotMatch(e.printReport.innerHTML,/先累積，再領現|自由比例/);}
+buttons.find(b=>b.dataset.mode==='policy').handlers.click();assert.equal(e.distributionMode.value,'allocation');assert.equal(e.cashPercent.value,'0');assert.equal(e.accumulationMonths.value,'12');
+e.cashPercent.value='80';e.accumulationMonths.value='12';run('render()');
+let link;ctx.navigator.clipboard={writeText:async s=>{link=s}};
+(async()=>{await e.share.handlers.click();const params=new URLSearchParams(new URL(link).hash.slice(1));assert.equal(params.get('cashPercent'),'80');assert.equal(params.get('accumulationMonths'),'12');const reload=setup(new URL(link).hash);assert.equal(reload.run('result.accumulationMonths'),12);assert.equal(reload.run('result.fraction'),.8);assert.equal(reload.elements.cashResult.textContent,e.cashResult.textContent);
+ e.cashPercent.value='101';run('render()');assert.match(e.inputError.textContent,/cashPercent/);e.cashPercent.value='80';e.accumulationMonths.value='12.5';run('render()');assert.match(e.inputError.textContent,/accumulationMonths/);e.reset.handlers.click();assert.equal(e.distributionMode.value,'rate');assert.equal(e.accumulationMonths.value,'0');assert.equal(e.firstCashResult.textContent,'NT$ 20,000');
+ console.log('PASS: controls, chips, sliders, defaults, deferred payout baseline, report content, tab isolation, share/reload, invalid inputs, reset');
+})().catch(err=>{console.error(err);process.exitCode=1});

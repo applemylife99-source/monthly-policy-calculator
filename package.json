@@ -1,11 +1,12 @@
 {
   "name": "monthly-policy-calculator",
-  "version": "2.1.9",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node test-server.mjs"
+    "test": "node test-server.mjs && node test-policy.cjs && node test-ui.cjs && node test-assets.mjs",
+    "build": "node scripts/build.mjs"
   },
   "engines": {
     "node": ">=20"

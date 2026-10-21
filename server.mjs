@@ -146,8 +146,9 @@ async function readPdfEngine() {
 async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-  if (!["/index.html", "/app.js", "/styles.css", "/assets/pdf-engine.js", "/assets/Noto-LICENSE.txt"].includes(requested)) { response.writeHead(404); response.end("Not found"); return; }
-  const filePath = normalize(join(ROOT, requested));
+  if (!["/index.html", "/app.js", "/styles.css", "/assets/pdf-engine.js", "/assets/Noto-LICENSE.txt", "/assets/model.js", "/assets/finance.js", "/assets/ui.js"].includes(requested)) { response.writeHead(404); response.end("Not found"); return; }
+  const sources = {"/assets/model.js":"src/model.js", "/assets/finance.js":"src/finance.js", "/assets/ui.js":"src/ui.js"};
+  const filePath = normalize(join(ROOT, sources[requested] || requested));
   if (!filePath.startsWith(ROOT)) {
     response.writeHead(403);
     response.end("Forbidden");
@@ -167,7 +168,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://localhost").pathname;
     if (path === "/favicon.ico") { response.writeHead(204); response.end(); return; }
-    if (path === "/health") { sendJson(response, { status: "ok", version: "2.1.9" }); return; }
+    if (path === "/health") { sendJson(response, { status: "ok", version: "2.2.0" }); return; }
     if (path === "/api/market-data") {
       sendJson(response, await marketData());
       return;
