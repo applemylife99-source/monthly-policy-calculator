@@ -27,5 +27,8 @@ e.cashPercent.value='80';e.accumulationMonths.value='12';run('render()');
 let link;ctx.navigator.clipboard={writeText:async s=>{link=s}};
 (async()=>{await e.share.handlers.click();const params=new URLSearchParams(new URL(link).hash.slice(1));assert.equal(params.get('cashPercent'),'80');assert.equal(params.get('accumulationMonths'),'12');const reload=setup(new URL(link).hash);assert.equal(reload.run('result.accumulationMonths'),12);assert.equal(reload.run('result.fraction'),.8);assert.equal(reload.elements.cashResult.textContent,e.cashResult.textContent);
  e.cashPercent.value='101';run('render()');assert.match(e.inputError.textContent,/cashPercent/);e.cashPercent.value='80';e.accumulationMonths.value='12.5';run('render()');assert.match(e.inputError.textContent,/accumulationMonths/);e.reset.handlers.click();assert.equal(e.distributionMode.value,'rate');assert.equal(e.accumulationMonths.value,'0');assert.equal(e.firstCashResult.textContent,'NT$ 20,000');
+ for(const age of [55,56,80]){e.age.value=String(age);run('render()');assert.equal(e.inputError.textContent,'');assert.match(e.deathBasis.textContent,new RegExp(age+'歲'));assert.equal(run('buildPrintReport()'),true);assert.doesNotMatch(e.printReport.innerHTML,/NaN|Infinity/);}
+ e.age.value='81';run('render()');assert.notEqual(e.inputError.textContent,'');e.age.value='45';run('render()');
+ console.log('PASS: cuican ages 55/56/80, age 81 rejected, valid report generation');
  console.log('PASS: controls, chips, sliders, defaults, deferred payout baseline, report content, tab isolation, share/reload, invalid inputs, reset');
 })().catch(err=>{console.error(err);process.exitCode=1});

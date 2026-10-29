@@ -47,7 +47,7 @@ const products = {
     type: "丁型",
     mode: "single",
     mortalityTable: "tw5",
-    ageRange: "15-55歲",
+    ageRange: "15-80歲",
     deathBenefitRatios: [[30, 2.1], [40, 1.8], [50, 1.6], [60, 1.3], [70, 1.2], [90, 1.05], [999, 1]],
     monthlyRates: { 1: 0.00205, 2: 0.00205, 3: 0.00205, 4: 0 },
     surrender: { 1: 0.07, 2: 0.055, 3: 0.045, 4: 0.02 },

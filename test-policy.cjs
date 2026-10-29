@@ -18,3 +18,8 @@ const single=next.project({...base,distributionMode:'allocation',cashPercent:80}
 const dual=next.project({...base,product:'zhihui',distributionMode:'allocation',cashPercent:80});near(dual.initialPrimaryUnits,3000000*.8/32/75);near(dual.initialGrowthUnits,3000000*.2/32/22);near(dual.rows[0].cash,3000000*.8/32/75*.8*32);
 const fixed=next.project({...base,payout:'fixed',accumulationMonths:12});assert.equal(fixed.rows[11].shortfall,0);near(fixed.rows[12].cash,20000);
 console.log('PASS: 90 legacy scenarios unchanged; financing ignores policy-only controls; accumulation boundaries 1/12/120; 0–100% allocation; dual fund units, reinvestment, fixed payout and no double counting');
+
+const k=vm.runInContext('products.cuican.deathBenefitRatios',next),oldK=vm.runInContext('products.cuican.deathBenefitRatios',old);assert.equal(JSON.stringify(k),JSON.stringify(oldK),'K values must remain unchanged');
+assert.equal(vm.runInContext('products.cuican.ageRange',next),'15-80歲');
+for(const age of [55,56,60,70,80])for(const gender of ['male','female']){const c={...base,age,gender},r=next.project(c);assert.ok(r.rows.every(x=>Number.isFinite(x.net)&&Number.isFinite(x.fee)));for(const m of [1,120,360])for(const key of ['cash','net','fee','total'])near(r.rows[m-1][key],old.project(c).rows[m-1][key]);}
+console.log('PASS: ages 56–80 supported with unchanged K values and projections');
