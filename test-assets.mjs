@@ -10,6 +10,6 @@ try {
  }
  const response=await fetch('http://127.0.0.1:4320/assets/pdf-engine.js');assert.equal(response.status,200);assert.equal(createHash('sha256').update(new Uint8Array(await response.arrayBuffer())).digest('hex'),'d2d4fb0458175f2e499f9bf9a10b2fd865f3b1f2ba726099a043e0761f954547');
  assert.equal((await fetch('http://127.0.0.1:4320/src/model.js')).status,404);
- assert.equal((await (await fetch('http://127.0.0.1:4320/health')).json()).version,'2.2.1');
+ assert.equal((await (await fetch('http://127.0.0.1:4320/health')).json()).version,'2.2.2');
  console.log('PASS: production HTML, all JS assets, MIME types, PDF engine integrity and health version');
 }finally{child.kill();}
